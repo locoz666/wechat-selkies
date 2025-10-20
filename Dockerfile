@@ -1,9 +1,9 @@
-# WeChat for Linux using Selkies baseimage
+# WeChat/QQ for Linux using Selkies baseimage
 FROM ghcr.io/linuxserver/baseimage-selkies:ubuntunoble
 
 # Metadata labels
-LABEL org.opencontainers.image.title="WeChat Selkies"
-LABEL org.opencontainers.image.description="WeChat Linux client in browser via Selkies WebRTC"
+LABEL org.opencontainers.image.title="WeChat & QQ Selkies"
+LABEL org.opencontainers.image.description="WeChat/QQ Linux client in browser via Selkies WebRTC"
 LABEL org.opencontainers.image.authors="nickrunning"
 LABEL org.opencontainers.image.source="https://github.com/nickrunning/wechat-selkies"
 LABEL org.opencontainers.image.documentation="https://github.com/nickrunning/wechat-selkies#readme"
@@ -13,6 +13,7 @@ LABEL org.opencontainers.image.licenses="GPL-3.0-only"
 # Build arguments for multi-arch support
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
+ARG DEFAULT_APP=wechat
 RUN echo "🏗️ Building WeChat-Selkies on $BUILDPLATFORM, targeting $TARGETPLATFORM"
 
 # set environment variables
@@ -52,13 +53,35 @@ RUN case "$TARGETPLATFORM" in \
     rm -f wechat.deb && \
     echo "✅ WeChat installation completed for $WECHAT_ARCH"
 
+# Install QQ when architecture is supported
+RUN case "$TARGETPLATFORM" in \
+    "linux/amd64") \
+        QQ_URL="https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_3.2.19_250904_amd64_01.deb"; \
+        echo "📦 Downloading QQ for amd64 architecture..."; \
+        curl -fsSL -o qq.deb "$QQ_URL" && \
+        echo "🔧 Installing QQ..." && \
+        (dpkg -i qq.deb || (apt-get update && apt-get install -f -y && dpkg -i qq.deb)) && \
+        rm -f qq.deb && \
+        echo "✅ QQ installation completed for amd64";; \
+    "linux/arm64") \
+        echo "QQ Linux 客户端当前仅提供 amd64 架构，跳过安装";; \
+    *) \
+        echo "❌ Unsupported platform: $TARGETPLATFORM" >&2; \
+        echo "Supported platforms for QQ: linux/amd64" >&2; \
+        exit 1 ;; \
+    esac
+
 # set app name
-ENV TITLE="WeChat-Selkies"
+ENV TITLE="Selkies-IM"
 ENV TZ="Asia/Shanghai"
 ENV LC_ALL="zh_CN.UTF-8"
+ENV SELKIES_DEFAULT_APP=${DEFAULT_APP}
 
 # update favicon
 COPY /root/wechat.png /usr/share/selkies/www/icon.png
 
 # add local files
 COPY /root /
+
+# 确保启动脚本拥有可执行权限
+RUN chmod +x /usr/local/bin/launch-selkies-app

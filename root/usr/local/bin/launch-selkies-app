@@ -1,0 +1,27 @@
+#!/bin/bash
+# 简单启动脚本，根据环境变量选择默认启动的客户端
+set -euo pipefail
+
+APP_CHOICE="${SELKIES_DEFAULT_APP:-wechat}"
+APP_CHOICE="$(printf '%s' "${APP_CHOICE}" | tr '[:upper:]' '[:lower:]')"
+
+case "${APP_CHOICE}" in
+    wechat)
+        exec wechat "$@"
+        ;;
+    qq)
+        if command -v qq >/dev/null 2>&1; then
+            exec qq "$@"
+        else
+            echo "未检测到 QQ，可执行文件缺失" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        echo "未识别的 SELKIES_DEFAULT_APP=${APP_CHOICE}" >&2
+        exit 1
+        ;;
+esac
+
+# 理论上不会到达此处，防御性退出
+exit 1
