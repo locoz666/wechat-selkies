@@ -21,6 +21,13 @@ env:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - variant: wechat
+            default_app: wechat
+          - variant: qq
+            default_app: qq
     permissions:
       contents: read
       packages: write
@@ -56,6 +63,22 @@ jobs:
           type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') || github.ref == format('refs/heads/{0}', 'master') }}
           type=sha,prefix={{branch}}-
 
+    - name: Compose tags with variant suffix
+      id: variant-tags
+      run: |
+        python <<'PY'
+        # 将 metadata 输出的镜像标签追加变体后缀
+        import os
+        tags = """${{ steps.meta.outputs.tags }}""".strip().splitlines()
+        suffix = "${{ matrix.variant }}"
+        variant_tags = [f"{tag}-{suffix}" for tag in tags if tag.strip()]
+        output_path = os.environ["GITHUB_OUTPUT"]
+        with open(output_path, "a", encoding="utf-8") as fh:
+          fh.write("tags<<EOF\n")
+          fh.write("\n".join(variant_tags))
+          fh.write("\nEOF\n")
+        PY
+
     - name: Build and push Docker image
       id: build-image
       uses: docker/build-push-action@v5
@@ -63,10 +86,12 @@ jobs:
         context: .
         platforms: linux/amd64,linux/arm64
         push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
+        tags: ${{ steps.variant-tags.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          DEFAULT_APP=${{ matrix.default_app }}
 
     - name: Generate artifact attestation
       if: github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch'
@@ -82,8 +107,10 @@ jobs:
         echo "## 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
         echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
         echo "**Repository:** ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Variant:** ${{ matrix.variant }}" >> $GITHUB_STEP_SUMMARY
+        echo "**DEFAULT_APP:** ${{ matrix.default_app }}" >> $GITHUB_STEP_SUMMARY
         echo "**Digest:** \`${{ steps.build-image.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
         echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.variant-tags.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
